@@ -1,0 +1,4 @@
+Faza,Model,Skup,AP test,AP CI donja,AP CI gornja,AUC-ROC test,AP normalizovan,Preciznost,Odziv,F1,Lažne uzbune/dan,AP val (Faza 4),AP val (Faza 5),AP val (Faza 6)
+Faza 4,RandomForest,Filter (40),0.0154,0.004,0.0641,0.9735,70.89,0.0106,0.1714,0.02,13.0,0.23856563717895504,,
+Faza 5,Transformer,Final (sekvenca),0.0031,0.0017,0.0065,0.936,14.03,0.0041,0.3429,0.0082,67.1,,0.0887446835593505,
+Faza 6,Isolation Forest,Final (12),0.0015,0.0009,0.0025,0.9012,6.91,0.002,0.2,0.0039,82.7,,,0.056647928393905325
