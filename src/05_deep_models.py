@@ -100,11 +100,10 @@ def napravi_sekvence(df, kolone, seq_len):
 vremenski_prozori, X_sve = napravi_sekvence(vremenski_prozori, atributi_final, SEQ_LEN)
 print("Oblik sekvenci za sve redove:", X_sve.shape)
 
-# Oblik (224180, 10, 12) potvrđuje: svaki od 224180 prozora dobija sekvencu
-# od 10 prethodnih koraka × 12 atributa. Entiteti sa manje od 10 prethodnih
-# prozora imaju sekvencu popunjenu nulama sa leve strane (padding) - ovo
+# Oblik (224180, 10, 11) potvrđuje: svaki od 224180 prozora dobija sekvencu
+# od 10 prethodnih koraka × 11 atributa. Entiteti sa manje od 10 prethodnih
+# prozora imaju sekvencu popunjenu nulama sa leve strane (padding). Ovo
 # uključuje i sve entitete na početku njihove istorije (window_seq_num < 10).
-
 
 # %%
 # --- 4. Podela na train/val/test (ista podela kao u Fazi 4, kolona 'split') ---
@@ -357,11 +356,11 @@ print(duboki_rezultati.to_string(index=False))
 duboki_rezultati.to_csv(RESULTS / "faza5_poredjenje_dubokih_modela.csv", index=False)
 print("Sačuvano: results/faza5_poredjenje_dubokih_modela.csv")
 
-# Transformer ubedljivo pobeđuje GRU i LSTM (AP 0.0887 naspram 0.0584/0.0556).
+# Transformer pobeđuje GRU i LSTM (AP 0.0770 naspram 0.0635/0.0587).
 # Attention mu omogućava da direktno poveže bilo koja dva vremenska koraka u
 # sekvenci, dok LSTM i GRU moraju da prenose informaciju
 # kroz uzastopne korake, gde signal postepeno slabi na dužim sekvencama.
-# Svi duboki modeli su ipak slabiji od Random Forest-a iz Faze 4 (AP=0.2386).
+# Svi duboki modeli su ipak slabiji od Random Forest-a iz Faze 4 (AP=0.2332).
 # Neobrađen ulaz kao sekvenca zahteva da model sam nauči šta klasični ručno
 # napravljeni istorijski atributi (_lag1, _ma24, _z) već direktno kodiraju,
 # a sa svega 101 pozitivnim primerom u treningu, to je mnogo teži zadatak
@@ -436,8 +435,8 @@ plt.savefig(RESULTS / "faza5_pr_kriva_validacije.png", dpi=120)
 plt.show()
 print("Grafik sačuvan: results/faza5_pr_kriva_validacije.png")
 
-# F1=0.1414 je znatno niži od Random Forest rezultata iz Faze 4 (F1=0.3306),
-# što je dosledno nižem AP-u Transformera. Neobično visok prag (0.9813)
+# F1=0.1524 je znatno niži od Random Forest rezultata iz Faze 4 (F1=0.2969),
+# što je dosledno nižem AP-u Transformera. Neobično visok prag (0.9548)
 # sugeriše da Transformer daje ekstremno samouverene verovatnoće (blizu 0 ili 1).
 
 # %%

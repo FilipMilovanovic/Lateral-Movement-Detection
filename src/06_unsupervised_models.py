@@ -152,7 +152,7 @@ for naziv_skupa, d in datasets.items():
 if_rezultati = pd.DataFrame(rezultati_if)
 print("\nIsolation Forest:")
 print(if_rezultati.to_string(index=False))
-# Najbolji je Final skup (AP=0.0566, AUC=0.9308)
+# Najbolji je Filter skup (AP=0.0598, AUC=0.8914)
 # Rezultati za contamination = "stvarni" i "auto" su identični kroz sva tri
 # skupa. Score_samples() vraća anomaly score (prosečnu dužinu putanje kroz stabla),
 # koji ne zavisi od contamination parametra. On utiče samo na offset_, tj. na prag
@@ -197,12 +197,12 @@ print(ocsvm_rezultati.to_string(index=False))
 # kod Isolation Forest-a), pa i score_samples() tj. rastojanje od hiperravni
 # zavisi od njega.
 
-# nu="stvarni" (0.00221) daje AUC-ROC ispod 0.5 na sva tri skupa (0.25-0.28).
+# nu="stvarni" (0.00221) daje AUC-ROC ispod 0.5 na sva tri skupa (0.29-0.30).
 # nu ograničava udeo tačaka koje smeju ostati van granice, pa ovako mala
 # vrednost prisiljava granicu da obuhvati skoro sve (99.78%) trening tačke
 # kao "normalne".
 #
-# Sa nu="podrazumevani" (0.5), AUC-ROC je solidan (0.82-0.84). Problem nije
+# Sa nu="podrazumevani" (0.5), AUC-ROC je solidan (0.83-0.85). Problem nije
 # sam model, nego ekstremna osetljivost na malu vrednost nu.
 
 
@@ -233,8 +233,8 @@ print(
 
 
 print(f"\nAP slučajnog modela (bazna stopa validacije): {y_val.mean():.4f}")
-print("Za poređenje - Faza 4 (Random Forest, nadgledano): AP val = 0.2386")
-print("Za poređenje - Faza 5 (Transformer, nadgledano):   AP val = 0.0887")
+print("Za poređenje - Faza 4 (Random Forest, nadgledano): AP val = 0.2332")
+print("Za poređenje - Faza 5 (Transformer, nadgledano):   AP val = 0.0770")
 
 svi_rezultati.to_csv(RESULTS / "faza6_poredjenje_nenadgledanih.csv", index=False)
 print("\nSačuvano: results/faza6_poredjenje_nenadgledanih.csv")
@@ -264,11 +264,11 @@ ax.axhline(
     label=f"Slučajan model (AP={y_val.mean():.4f})",
 )
 ax.axhline(
-    0.2386,
+    0.2332,
     color="green",
     linestyle=":",
     linewidth=1.5,
-    label="Faza 4 - Random Forest (AP=0.2386)",
+    label="Faza 4 - Random Forest (AP=0.2332)",
 )
 ax.set_xticks(range(len(svi_rezultati)))
 ax.set_xticklabels(oznake, rotation=45, ha="right", fontsize=8)
@@ -340,12 +340,12 @@ print("Grafik sačuvan: results/faza6_raspodela_skora.png")
 print(f"\nProsečan skor - normalni prozori: {skor_val[y_val == 0].mean():.4f}")
 print(f"Prosečan skor - napadi:           {skor_val[y_val == 1].mean():.4f}")
 
-# Normalni prozori imaju uzak, jednomodalan vrh oko 0.35, ali i dug,
-# tanak rep koji se proteže sve do skoro 0.8. Napadi počinju tek oko 0.40
-# i nastavljaju se do preko 0.70 bez izraženog vrha.
+# Normalni prozori imaju uzak, jednomodalan vrh oko 0.37-0.38, sa tankim
+# repom koji se proteže do otprilike 0.65-0.67. Napadi počinju oko 0.38
+# i nastavljaju se do skoro 0.70 bez izraženog vrha.
 #
-# Ispod 0.40 preklapanja nema (čisto normalni prozori), ali od 0.40 pa
-# nadalje se dve klase preklapaju kroz ceo preostali opseg. Kod
+# Ispod 0.38 preklapanja nema (čisto normalni prozori), ali od 0.38 pa
+# nadalje se dve klase preklapaju kroz veći deo preostalog opsega. Kod
 # balansiranih klasa ovo preklapanje bi umereno oštetilo preciznost.
 # Ovde dodatno utiče disbalans, čak i mali procenat od
 # 17515 normalnih prozora koji upadne u tu zonu je veći od svih 115 napada,
@@ -401,13 +401,13 @@ plt.savefig(RESULTS / "faza6_pr_kriva_validacije.png", dpi=120)
 plt.show()
 print("Grafik sačuvan: results/faza6_pr_kriva_validacije.png")
 
-# Na izabranom pragu: preciznost 7.5%, odziv 44.35%, F1=0.1286, oko 157
+# Na izabranom pragu: preciznost 7.9%, odziv 34.78%, F1=0.1290, oko 116
 # lažnih uzbuna dnevno. U stvarnom SOC okruženju analitičar bi morao da
-# pregleda preko 150 alarma dnevno da bi uhvatio manje od polovine pravih napada,
+# pregleda preko 100 alarma dnevno da bi uhvatio manje od polovine pravih napada,
 # što model na ovom pragu čini teško upotrebljivim.
 #
 # Ovde takođe uočavamo istu stvar o kojoj je bilo reči u Fazama 4 i 5: AUC-ROC od
-# 0.93 deluje odlično, a Average Precision i stvarna preciznost pokazuju
+# 0.89 deluje solidno, a Average Precision i stvarna preciznost pokazuju
 # sasvim drugu sliku. Ta razlika povezuje sve tri faze modelovanja.
 
 
