@@ -7,7 +7,7 @@
 # Poredim pobedike svake faze:
 # Faza 4: RandomForest (Filter, bez balansiranja)
 # Faza 5: Transformer (Final, sekvenca)
-# Faza 6: Isolation Forest (Final)
+# Faza 6: Isolation Forest (Filter)
 
 from pathlib import Path
 import json
@@ -383,16 +383,21 @@ print("Sačuvano: results/faza7_finalno_poredjenje.csv")
 
 # Random Forest dosledno pobeđuje na svakoj meri na testu (AP, normalizovan AP,
 # AUC-ROC, F1).
-# Apsolutni AP na testu (0.0154) izgleda drastično niži od validacije (0.2386),
-# ali normalizovan AP pokazuje da je model skoro duplo bolji (70.89 naspram 36.57)
-# Pad je posledica 30 puta nižeg udela pozitivnih na testu (0.652% -> 0.022%),a ne
-# pogoršanja modela. AUC-ROC staje visok za sva tri modela (0.90-0.97).
+# Apsolutni AP na testu (0.0286) je niži od validacije (0.2332), ali normalizovan
+# AP pokazuje da tačkasta procena modela na testu hvata signal čak bolje nego na
+# validaciji (131.63 naspram približno 35.77, oko 3.7 puta više). Bootstrap
+# interval za AP na testu je širok ([0.0049, 0.1195], usled svega 35 pozitivnih
+# primera), pa ovaj odnos nosi veliku neizvesnost i ne treba ga tumačiti kao
+# čvrst dokaz da model generalizuje bolje nego što validacija sugeriše.
+# Pad apsolutnog AP-a je posledica oko 30 puta nižeg udela pozitivnih na testu
+# (0.652% -> 0.022%).
+# AUC-ROC ostaje solidan za sva tri modela (0.87-0.94).
 # Na sačuvanim pragovima, Random Forest ima najbolji F1 i najmanje lažnih
-# uzbuna (13/dan), ali Transformer hvata duplo više napada (12 od 35 naspram
-# 6) po ceni 5 puta više lažnih uzbuna (67/dan).
-# Random Forest na testu hvata signal skoro 71x bolje nego nasumično
+# uzbuna (12.9/dan), i hvata 10 od 35 napada. Transformer hvata nešto više
+# napada (13 od 35), ali po ceni od četvorostruko više lažnih uzbuna
+# (54.8/dan naspram 12.9/dan).
+# Random Forest na testu hvata signal preko 130 puta bolje nego nasumično
 # pogađanje.
-
 
 # %%
 # --- 9. Vizuelno poređenje: AP na validacionom skupu naspram AP na test skupu ---

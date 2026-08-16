@@ -92,7 +92,7 @@ print(rangiranje.to_string(index=False))
 rangiranje.to_csv(RESULTS / "faza8_shap_rangiranje.csv", index=False)
 print("\nSačuvano: results/faza8_shap_rangiranje.csv")
 
-# Uočava se da su najuticajniji atributi deo NTLM porodice atributa (4 od 5 najuticajnijih).
+# Uočava se da su najuticajniji atributi deo NTLM porodice atributa (4 od 5).
 
 # %%
 # --- 4. Bar plot: ukupan značaj atributa ---
@@ -150,10 +150,11 @@ for redni_broj, idx in enumerate(najsigurniji, start=1):
     doprinosi = doprinosi.sort_values("|SHAP|", ascending=False).head(6)
     print(doprinosi[["Atribut", "Vrednost", "SHAP"]].to_string(index=False))
 
-# Ni najsigurniji napadi koji je model prepoznao ne prelazi verovatnoću 0.5
-# (0.4334, 0.2863, 0.2212). Predstavljaju posledicu ekstremnog disbalansa iz trening skupa.
-# Ovo potvrđuje zašto je u Fazi 4 izabran prag 0.0915 umesto standardnog 0.5. Na pragu 0.5
-# model ne bi uhvatio čak ni ova tri najočiglednija slučaja.
+# Najsigurniji napad koji je model prepoznao (entitet U1145) premašuje verovatnoću
+# 0.5 (0.5100), dok preostala dva ostaju ispod (0.4200, 0.4100). I dalje bi na
+# standardnom pragu 0.5 dva od tri najočiglednija slučaja bila propuštena, što
+# potvrđuje zašto je u Fazi 4 izabran znatno niži prag (0.16).
+
 # %%
 # --- 7. Waterfall grafik za najsigurniji napad ---
 # Waterfall prikazuje kako se predikcija gradi korak po korak. Kreće od osnovne
@@ -183,13 +184,11 @@ plt.savefig(RESULTS / "faza8_shap_waterfall.png", dpi=120)
 plt.show()
 print("Grafik sačuvan: results/faza8_shap_waterfall.png")
 
-# Nijedan pojedinačni atribut ne odlučuje sam. Doprinosi su ravnomerno
-# raspoređeni (+0.01 do +0.05), sa NTLM porodicom i atributima novih odredišta
-# kao najjačim, u skladu sa globalnim nalazom iz ćelije 5.
+# Nijedan pojedinačni atribut ne odlučuje sam. Doprinosi su raspoređeni u rasponu
+# od oko +0.03 do +0.08, sa n_new_dst, NTLM porodicom i n_failure_z kao najjačim
+# pojedinačnim doprinosima, u skladu sa globalnim nalazom iz ćelije 5.
 # Model gradi predikciju postepeno, sabiranjem umerenih doprinosa mnogo
 # atributa a ne oslanjanjem na jedan dominantan signal.
-#  Čak i uz sve te doprinose, konačna verovatnoća
-# (0.433) ostaje ispod 0.5.
 
 # %%
 # --- 8. Poređenje napadačkih i normalnih prozora ---
@@ -215,12 +214,11 @@ poredjenje.to_csv(RESULTS / "faza8_shap_napadi_vs_normalni.csv", index=False)
 print("\nSačuvano: results/faza8_shap_napadi_vs_normalni.csv")
 
 # Za svih top 10 atributa prosečan SHAP doprinos napada je pozitivan
-# (0.002-0.014), dok je kod normalnih prozora blizu nule. Model
+# (0.004-0.022), dok je kod normalnih prozora blizu nule. Model
 # ove atribute koristi baš da razdvoji napade od normalnog
 # ponašanja, a ne da menja predikciju nezavisno od toga da li je
 # nešto stvarno napad. Rangiranje se poklapa sa globalnim nalazom
 # iz prethodnih ćelija.
-
 # %%
 
 # --- 9. Poređenje sa MITRE ATT&CK tehnikama ---
