@@ -56,9 +56,10 @@ print()
 print(train[atributi].describe().T)
 
 # Svi bazni atributi imaju 45.685 popunjenih vrednosti (ceo trening skup, bez NaN).
-# -n_failure i fail_ratio su KONSTANTA (min=max=mean=std=0) - u ovom uzorku nema
-#   nijedne neuspešne prijave.
-# - Raspodele su izrazito desno zakrivljene (mean > medijana, std > mean)
+# n_failure ima mean=0.101, std=2.569, max=450 - redak, ali realan signal
+# (75. percentil je i dalje 0, pa je raspodela izrazito desno zakrivljena
+# kao i kod ostalih brojačkih atributa).
+# Raspodele su izrazito desno zakrivljene (mean > medijana, std > mean)
 # %%
 # --- 3. Nedostajuće vrednosti ---
 # NaN vrednosti su očekivane kod istorijskih (lag) atributa. Za prve prozore
@@ -80,13 +81,18 @@ print(
 )
 # Bazni atributi nemaju nijedan NaN.
 # Lag1 i Delta imaju tačno 358 NaN (0.78%), što odgovara prvom prozoru za svaki od
-# 358 entiteta (nedostatak istorije).Ma24 i Sd24 imaju 691 NaN (1.51%) - VIŠE nego lag1,
-# jer rolling (min_periods=2) traži DVE validne vrednosti u prozoru, a pomerena serija
+# 358 entiteta (nedostatak istorije). Ma24 i Sd24 imaju 691 NaN (1.51%) - više nego lag1,
+# jer rolling (min_periods=2) traži dve validne vrednosti u prozoru, a pomerena serija
 # već ima jedan NaN na startu. Zato su prazna prva dva prozora svakog entiteta, ne samo prvi.
-# n_failure_z ima 100% NaN jer je standardna devijacija nula
+# n_failure_z ima 64.34% NaN (29.392 od 45.685) - najviši procenat NaN među
+# svim atributima, čak i viši od n_ntlm_z (57.59%). Standardna devijacija
+# (sd24) je kod većine entiteta i dalje nula unutar kliznog prozora od 24
+# prozora, jer je neuspešna prijava redak događaj. Kad god je sd24=0,
+# z-skor je nedefinisan (deljenje nulom), pa ostaje NaN.
 # n_events_z (1.62%) blizu osnovnih 1.51%, sd24=0 redak slučaj, broj događaja
-# retko potpuno konstantan. n_dst/src_comp_z (3.30%/3.81%) nešto veći - povremeni
-# mirni periodi. n_ntlm_z upadljivo visok (57.59%) - kod većine entiteta NTLM
+# retko potpuno konstantan.
+# n_dst/src_comp_z (3.30%/3.81%) nešto veći - povremeni mirni periodi.
+# n_ntlm_z upadljivo visok (57.59%) - kod većine entiteta NTLM
 # aktivnost je kroz istoriju potpuno konstantna (najverovatnije nula), što znači
 # da je NTLM redak signal - kad se ipak pojavi, verovatno je informativniji baš
 # zato što odudara od dugotrajne stabilnosti.
@@ -131,8 +137,10 @@ print("Grafik sačuvan: results/distribucije_atributa_log.png")
 
 # n_events i n_dst_comp: na linearnoj skali se ne vidi jasno opadajući rep,
 # dok je na log-skali rep jasno vidljiv i pokazuje da postoji mali broj entiteta
-# sa izuzetno velikim brojem događaja ili odredišta. Ova osobina može biti značajna za detekciju anomalija.
-# fail_ratio: potpuno konstantan atribut na 0.0.
+# sa izuzetno velikim brojem događaja ili odredišta. Ova osobina može biti značajna
+# za detekciju anomalija.
+# fail_ratio: Dominantna masa jena 0.0 (kao i kod ntlm_ratio), ali postoji realan rep
+# prema većim vrednostima.
 # ntlm_ratio: dominantno na 0.0
 # new_dst_ratio: koncentrisan blizu 0, sa malom (ne ravnopravnom) bimodalnošću ka 1.0.
 
@@ -162,7 +170,9 @@ print("Grafik sačuvan: results/distribucije_napad_vs_normalno.png")
 # celog opsega, sa vidljivim delom i na višim vrednostima.
 # n_events i n_dst_comp: na ovoj (linearnoj) skali obe krive su zbijene uz nulu
 # i vizuelna razlika između klasa nije jasno vidljiva.
-# fail_ratio: prazan panel, jer je atribut konstantan (0.0) za obe klase.
+# fail_ratio: Prosečna vrednost je vidljivo viša kod napadačkih prozora (0.0205)
+# nego kod normalnih (0.0049), četvorostruka razlika, u skladu sa očekivanjem da
+# neuspešne prijave prate pokušaje pristupa sa pogrešnim kredencijalima tokom lateralnog kretanja.
 
 # %%
 # --- 6. Analiza autlajera ---
@@ -248,7 +258,7 @@ print(target_corr.head(15))
 # Pearsonova korelacija sa binarnim targetom koji ima 0.221% pozitivnih u
 # treningu daje mikroskopske vrednosti za sve atribute - ovo je očekivano
 # kod ovakvog disbalansa, nije znak da atributi nisu informativni.
-# Trenutno najinformativniji atribut je ntlm_ratio.
+# Najinformativniji atribut je ntlm_ratio (0.110), zatim sledi n_failure_z (0.096) pa onda n_auth_types (0.077).
 
 
 # %%
@@ -308,6 +318,8 @@ bez_zavisnosti = set(mi_map[mi_map == 0].index)
 print(f"\nAtributa sa MI = 0 (izbačeno): {len(bez_zavisnosti)}")
 print(sorted(bez_zavisnosti))
 
+# Nijedan atribut nema MI=0.
+
 preostalo_posle_mi = [c for c in X_train_num.columns if c not in bez_zavisnosti]
 
 # Iz svakog visoko korelisanog para zadržava se onaj sa većim MI skorom.
@@ -362,8 +374,8 @@ else:
     X_rfecv, y_rfecv = X_posle_filtera, y_train
 
 # Dijagnostika: broj pozitivnih primera po foldu, n_splits=5 (početni pokušaj).
-# Proverava hipotezu da RFECV zadržava skoro sve atribute (39/40) zbog premalog
-# broja pozitivnih primera u ranim foldovima, ne zbog premalog uzorka.
+# Proverava da li n_splits=5 daje foldove sa premalo (ili nula) pozitivnih
+# primera u testu, što bi činilo unakrsnu validaciju nepouzdanom.
 print("Dijagnostika 1: TimeSeriesSplit(n_splits=5)")
 print("Veličina poduzorka za RFECV:", len(X_rfecv))
 print("Pozitivnih u celom poduzorku:", int(y_rfecv.sum()))
@@ -431,9 +443,7 @@ plt.show()
 print("Grafik sačuvan: results/rfecv_optimizacija.png")
 
 
-# Kriva pokazuje da skor raste naglo do ~13 atributa, pa osciluje bez jasnog
-# daljeg poboljšanja. RFECV je odabrao 15 kao dovoljan broj, ne nužno
-# apsolutni maksimum pojedinačne tačke na grafiku.
+# RFECV je odabrao 15 kao dovoljan broj, ne nužno apsolutni maksimum pojedinačne tačke na grafiku.
 
 # %%
 # --- 12. Embedded metoda: značaj atributa iz XGBoost, na atributima posle filtera ---
@@ -483,7 +493,7 @@ print(f"Pun skup:               {X_train_num.shape[1]}")
 print(f"Posle filtera:          {len(atributi_posle_filtera)}")
 print(f"Posle wrapper+embedded: {len(finalna_lista)}")
 
-# Finalna selekcija atributa je izraženo koncentrisana oko NTLM signala (5 od 12 atributa), što se poklapa sa teorijskim očekivanjem da je NTLM ključan indikator Pass-the-Hash tehnika, ali istovremeno ukazuje na mogući rizik generalizacije. Model bi mogao biti manje efikasan protiv napada koji izbegavaju NTLM protokol.
+# Finalna selekcija atributa je izraženo koncentrisana oko NTLM signala (5 od 11 atributa), što se poklapa sa teorijskim očekivanjem da je NTLM ključan indikator Pass-the-Hash tehnika, ali istovremeno ukazuje na mogući rizik generalizacije. Model bi mogao biti manje efikasan protiv napada koji izbegavaju NTLM protokol.
 # %%
 # --- 14. Čuvanje rezultata ---
 with open(PROC / "features_full.json", "w", encoding="utf-8") as f:

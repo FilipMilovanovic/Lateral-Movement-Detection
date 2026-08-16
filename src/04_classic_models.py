@@ -203,15 +203,15 @@ baseline_rezultati = pd.DataFrame(rezultati)
 print("Baseline modeli:")
 print(baseline_rezultati.to_string(index=False))
 
-# Dummy potvrđuje teorijsko očekivanje: AP na validacionom skupu (0.0065) skoro
-# tačno odgovara udelu pozitivnih na istom skupu. Log Reg jedini ubedljivo
-# pobeđuje Dummy kroz sva tri skupa atributa i najbolji je
-# na Final skupu (AP=0.076) što potvrđuje da je selekcija atributa bila korisna.
-# KNN i posebno Decision Tree pokazuju jasan overfitting. Decision Tree očekivano
-# overfit-uje, na train-u AP = 1.0, na val padaju ispod ili blizu Dummy nivoa.
-# AUC-ROC kod LogReg (0.87+) deluje visoko uprkos niskom AP što je tipično za
-# nebalansiranje skupove.
 
+# Dummy potvrđuje teorijsko očekivanje: AP na validacionom skupu (0.0065) skoro
+# tačno odgovara udelu pozitivnih na istom skupu. Log Reg ubedljivo
+# pobeđuje Dummy kroz sva tri skupa atributa i najbolji je
+# na Final skupu (AP=0.063) što potvrđuje da je selekcija atributa bila korisna.
+# KNN i posebno Decision Tree pokazuju jasan overfitting (AP na treningu 0.44-0.47
+# kod KNN, 1.0 kod Decision Tree), pa i pored toga što na validaciji ostaju iznad
+# Dummy nivoa (0.007-0.036), daleko su ispod Log Reg.
+# AUC-ROC kod LogReg (0.86-0.88) deluje visoko uprkos niskom AP.
 # %%
 # --- 5. Ensemble modeli kroz tri skupa atributa ---
 ENSEMBLE = ["RandomForest", "XGBoost"]
@@ -237,16 +237,17 @@ ensemble_rezultati = pd.DataFrame(rezultati_ensemble)
 print("Ensemble modeli (Average Precision):")
 print(ensemble_rezultati.to_string(index=False))
 
-# Random Forest i XGBoost ubedljivo pobeđuju Log Reg (AP 0.14-0.17 naspram
-# 0.06-0.08). XGBoost je konzistentno bolji od Random Forest-a na sva
-# tri skupa atributa. Najbolje performanse postiže na Final skupu
-# (AP=0.1703, AUC-ROC=0.9411). Ovo opet potvrđuje da je selekcija atributa bila
-# značajni faktor. Oba modela overfituju (AP na treningu 1.0 naspram 0.14-0.17
+# Random Forest i XGBoost ubedljivo pobeđuju Log Reg (AP 0.12-0.19 naspram
+# 0.06-0.07). XGBoost je konzistentno bolji od Random Forest-a na sva
+# tri skupa atributa. Najbolje performanse postiže na Filter skupu
+# (AP=0.1868, AUC-ROC=0.9263). Selekcija atributa i dalje pomaže u odnosu na
+# pun skup (53), ali agresivno sužavanje na finalni skup (11) ovde ne donosi
+# dodatnu korist, kod oba modela je Filter (40) bolji izbor od Final (11). Oba modela overfituju (AP na treningu 1.0 naspram 0.12-0.19
 # na validaciji). Ovo je zanimljivo jer bagging (Random Forest) po prirodi smanjuje
 # varijansu računanjem proseka predikcija stabala treniranih na različitim bootstrap
 # uzorcima i podskupovima atributa, pa se očekuje da manje overfituje od pojedinačnog
-# stabla. Pad AP-a (1.0 na 0.14) je manje drastičan nego kod samog Decision Tree-a
-# (1.0 na 0.02). Kod ekstremnog disbalansa svaki bootstrap uzorak sadrži malo pozitivnih
+# stabla. Pad AP-a (1.0 na 0.12-0.16) je manje drastičan nego kod samog Decision Tree-a
+# (1.0 na 0.01-0.02). Kod ekstremnog disbalansa svaki bootstrap uzorak sadrži malo pozitivnih
 # instanci da ih pojedinačno stablo lako zapamti kroz par grananja jer nema dovoljno
 # raznovrsnih pozitivnih primera da se overfitting smanji kao kod balansiranih podataka.
 # Kod XGBoost-a (boosting) je overfitting očekivan jer se svako sledeće stablo trudi da
@@ -271,7 +272,7 @@ svi_rezultati.to_csv(
 )
 print("Sačuvano: results/faza4_poredjenje_modela_sa_balansiranjem.csv")
 
-# Najbolji je XGBoost na Final skupu (AP=0.1703), ali ovo poređenje razmatra
+# Najbolji je XGBoost na Filter (40) skupu (AP=0.1868), ali ovo poređenje razmatra
 # isključivo modele treniranje uz korekciju disbalansa klasa (pozitivnoj
 # klasi je dodeljena veća težina pri učenju).
 
@@ -342,18 +343,24 @@ plt.show()
 print("Grafik sačuvan: results/faza4_uticaj_balansiranja.png")
 
 
-# Za Decision Tree balansiranje uvek šteti (od -0.005 do -0.037), takođe i za Random Forest (od -0.017 do -0.037), što potvrđuje da stabla postaju sklonija overfitting-u na ređoj klasi kada im se dodatno pojača težina te klase. Log Reg  uvek dobija, ali veličina efekta zavisi od skupa. XGBoost je najzanimljiviji: balansiranje pomaže na Final skupu podataka (+0.053), zanemarljiv na Filter-u (+0.005),dok šteti na Full skupu (-0.006). Balansiranje nije univerzalno korisno ni po modelu ni nezavisno od skupa atributa, već efekat zavisi od obe stvari.
+# Za Decision Tree balansiranje šteti na Filter i Full skupu (-0.038, -0.014), ali
+# blago pomaže na Final skupu (+0.005). Random Forest je dosledniji: balansiranje
+# šteti na sva tri skupa, u rasponu od -0.055 do -0.079. Log Reg uvek dobija
+# (od +0.005 do +0.046). XGBoost pomaže na Filter i Final skupu (+0.026, +0.027),
+# dok je efekat na Full skupu praktično zanemarljiv (+0.0005). Balansiranje nije
+# univerzalno korisno ni po modelu ni nezavisno od skupa atributa, već efekat
+# zavisi od obe stvari.
 
 # %%
 # --- 8. Optimizacija hiperparametara najboljih kandidata ---
 # TimeSeriesSplit umesto običnog KFold-a.
 # n_splits=3 iz istog razloga kao u Fazi 3 (premalo pozitivnih po
 # foldu kod n_splits=5).Optimizuju se samo RandomForest i XGBoost. Svaki model koristi svoju najbolju kombinaciju skupa atributa i balansiranja
-# RandomForest bez balansiranja na Filter skupu (AP=0.1928), XGBoost sa
-# balansiranjem na Final skupu (AP=0.1703).
+# RandomForest bez balansiranja na Filter skupu (AP=0.2332), XGBoost sa
+# balansiranjem na Filter skupu (AP=0.1868).
 kandidati_za_tuning = {
     "RandomForest": {"skup": "Filter (40)", "balansiranje": False},
-    "XGBoost": {"skup": "Final (12)", "balansiranje": True},
+    "XGBoost": {"skup": "Filter (40)", "balansiranje": True},
 }
 
 prostor_pretrage = {
@@ -382,8 +389,9 @@ rezultati_tuning = {}
 for naziv_modela, konfig in kandidati_za_tuning.items():
     X_tr = datasets[konfig["skup"]]["X_train"]
     X_v = datasets[konfig["skup"]]["X_val"]
-    osnovni_model = make_models(balansiranje=konfig["balansiranje"])[naziv_modela]
 
+    # Tjunirani model
+    osnovni_model = make_models(balansiranje=konfig["balansiranje"])[naziv_modela]
     pretraga = RandomizedSearchCV(
         osnovni_model,
         param_distributions=prostor_pretrage[naziv_modela],
@@ -394,23 +402,56 @@ for naziv_modela, konfig in kandidati_za_tuning.items():
         n_jobs=-1,
     )
     pretraga.fit(X_tr, y_train)
+    model_tuned = pretraga.best_estimator_
+    p_val_tuned = model_tuned.predict_proba(X_v)[:, 1]
+    ap_val_tuned = average_precision_score(y_val, p_val_tuned)
 
-    model_opt = pretraga.best_estimator_
-    p_val = model_opt.predict_proba(X_v)[:, 1]
-    ap_val = average_precision_score(y_val, p_val)
+    # Netjunirani (podrazumevani) model, na istom skupu i balansiranju - poredi
+    # se sa tjuniranim radi poštenog izbora finalne konfiguracije.
+    model_default = make_models(balansiranje=konfig["balansiranje"])[naziv_modela]
+    model_default.fit(X_tr, y_train)
+    p_val_default = model_default.predict_proba(X_v)[:, 1]
+    ap_val_default = average_precision_score(y_val, p_val_default)
+
+    if ap_val_tuned >= ap_val_default:
+        model_izabran, p_val_izabran, ap_val_izabran = (
+            model_tuned,
+            p_val_tuned,
+            ap_val_tuned,
+        )
+        izvor = "tuning"
+        parametri_izabrani = pretraga.best_params_
+    else:
+        model_izabran, p_val_izabran, ap_val_izabran = (
+            model_default,
+            p_val_default,
+            ap_val_default,
+        )
+        izvor = "podrazumevani (bez tuninga)"
+        puni_parametri = model_default.get_params()
+        parametri_izabrani = {
+            k: puni_parametri[k]
+            for k in prostor_pretrage[naziv_modela]
+            if k in puni_parametri
+        }
 
     rezultati_tuning[naziv_modela] = {
-        "model": model_opt,
+        "model": model_izabran,
         "skup": konfig["skup"],
         "X_val": X_v,
-        "p_val": p_val,
-        "ap_val": ap_val,
-        "parametri": pretraga.best_params_,
+        "p_val": p_val_izabran,
+        "ap_val": ap_val_izabran,
+        "parametri": parametri_izabrani,
+        "izvor": izvor,
     }
-    print(f"{naziv_modela} ({konfig['skup']}): AP val posle tuninga = {ap_val:.4f}")
-    print(f"  Najbolji parametri: {pretraga.best_params_}\n")
+    print(
+        f"{naziv_modela} ({konfig['skup']}): AP val (tuning) = {ap_val_tuned:.4f}, "
+        f"AP val (podrazumevano) = {ap_val_default:.4f} -> bira se {izvor}"
+    )
+    print(f"  Izabrani parametri: {parametri_izabrani}\n")
 
-# Izbor pobednika posle tuninga.
+# Izbor pobednika između RandomForest i XGBoost, svaki već sa svojom najboljom
+# (tjuniranom ili podrazumevanom) konfiguracijom.
 naziv_najboljeg = max(rezultati_tuning, key=lambda m: rezultati_tuning[m]["ap_val"])
 model_optimizovan = rezultati_tuning[naziv_najboljeg]["model"]
 X_val_najboljeg = rezultati_tuning[naziv_najboljeg]["X_val"]
@@ -418,19 +459,20 @@ p_val_opt = rezultati_tuning[naziv_najboljeg]["p_val"]
 ap_val_opt = rezultati_tuning[naziv_najboljeg]["ap_val"]
 
 print(
-    f"\nNajbolji posle tuninga: {naziv_najboljeg} "
-    f"({rezultati_tuning[naziv_najboljeg]['skup']}), AP val = {ap_val_opt:.4f}"
+    f"\nNajbolji: {naziv_najboljeg} ({rezultati_tuning[naziv_najboljeg]['skup']}), "
+    f"AP val = {ap_val_opt:.4f}, izvor: {rezultati_tuning[naziv_najboljeg]['izvor']}"
 )
 
-# RandomForest posle tuninga dostiže AP=0.2386 značajan skok u odnosu na
-# 0.1928 pre tuninga
-# XGBoost posle tuninga PADA na AP=0.1503, niže od podrazumevanih parametara
-# (0.1703). RandomizedSearchCV bira najbolju kombinaciju na osnovu proseka kroz
-# TimeSeriesSplit fold-ove unutar treninga (2, 22, 12 pozitivnih po fold-u), ne
-# direktno na validaciji. Kod ovako malog broja pozitivnih po fold-u, kombinacija koja
-# pobedi na CV proseku ne mora da generalizuje jednako dobro na pravi
-# validacioni skup (druga vremenska populacija, 115 pozitivnih). Ovo je
-# poznato ograničenje standardnog tuning-a pod ekstremnim disbalansom.
+# RandomForest posle tuninga dostiže AP=0.2035, niže od 0.2332 pre tuninga.
+# XGBoost posle tuninga dostiže AP=0.1780, niže od 0.1868 pre tuninga.
+# RandomizedSearchCV bira najbolju kombinaciju na osnovu proseka kroz
+# TimeSeriesSplit fold-ove unutar treninga, ne direktno na validaciji. Kod ovako
+# malog broja pozitivnih po fold-u, kombinacija koja pobedi na CV proseku ne mora
+# da generalizuje jednako dobro na pravi validacioni skup (druga vremenska
+# populacija, 115 pozitivnih). Oba modela pokazuju ovaj efekat, što ukazuje da je
+# reč o poznatom ograničenju standardnog tuning-a pod ekstremnim disbalansom.
+# Konačan izabran model je RandomForest sa podrazumevanim  hiperparametrima
+# na Filter (40) skupu, AP=0.2332.
 
 # %%
 # --- 9. Biranje praga odlučivanja na validaciji ---
@@ -486,14 +528,11 @@ plt.show()
 print("Grafik sačuvan: results/faza4_pr_kriva_validacije.png")
 
 # PR kriva pokazuje da je model daleko iznad slučajnog nagađanja (siva linija,
-# AP=0.0065) kroz ceo opseg odziva čak i pri visokom odzivu, preciznost
-# ostaje veća od slučajnog izbora. Nestabilnost krive na početku (nizak
-# odziv) je očekivana: kad model izdvoji samo deo najsumnjivijih prozora,
-# jedan jedini pogrešan naglo menja preciznost, jer se kriva
-# računa na tako malom broju predikcija. Izabrani prag (F1=0.331, harmonijska sredina
-# preciznosti i odziva) se nalazi okvirno na mestu gde kriva menja karakter:
-# do te tačke, dodatni odziv se dobija uz relativno mali gubitak preciznosti, a
-# posle nje preciznost naglo pada.
+# AP=0.0065) kroz ceo opseg odziva. Kriva je izrazito nestabilna pri niskom
+# odzivu (do približno 0.2). Izabrani prag (0.160000, F1=0.297,
+# harmonijska sredina preciznosti i odziva) nalazi se već iza te nestabilne
+# zone, na delu krive koji dalje opada postepeno i predvidljivo sve do kraja
+# opsega odziva.
 # %%
 # --- 10. Čuvanje modela i konfiguracije za finalnu evaluaciju ---
 # Modeli se čuvaju da bi test evaluacija (kraj Faze 6) mogla da se izvede bez
@@ -504,6 +543,7 @@ konfiguracija = {
     "model": naziv_najboljeg,
     "skup_atributa": skup_najboljeg,
     "kolone": list(X_val_najboljeg.columns),
+    "izvor": rezultati_tuning[naziv_najboljeg]["izvor"],
     "najbolji_parametri": {
         k: str(v) for k, v in rezultati_tuning[naziv_najboljeg]["parametri"].items()
     },

@@ -1,13 +1,13 @@
 Skup,Model,da,ne,razlika
-Filter (40),DecisionTree,0.0079,0.0339,-0.026
-Filter (40),LogReg,0.0618,0.0489,0.0129
-Filter (40),RandomForest,0.1605,0.1928,-0.0323
-Filter (40),XGBoost,0.161,0.1563,0.0047
-Final (12),DecisionTree,0.0068,0.012,-0.0052
-Final (12),LogReg,0.076,0.0291,0.0469
-Final (12),RandomForest,0.1447,0.1614,-0.0167
-Final (12),XGBoost,0.1703,0.117,0.0533
-Full (53),DecisionTree,0.0211,0.0394,-0.0183
-Full (53),LogReg,0.0587,0.0577,0.001
-Full (53),RandomForest,0.1435,0.1805,-0.037
-Full (53),XGBoost,0.1475,0.1535,-0.006
+Filter (40),DecisionTree,0.007,0.0446,-0.0376
+Filter (40),LogReg,0.0629,0.0517,0.0112
+Filter (40),RandomForest,0.1569,0.2332,-0.0763
+Filter (40),XGBoost,0.1868,0.1608,0.026
+Final (11),DecisionTree,0.0146,0.0092,0.0054
+Final (11),LogReg,0.0631,0.0172,0.0459
+Final (11),RandomForest,0.1168,0.1713,-0.0545
+Final (11),XGBoost,0.1695,0.1424,0.0271
+Full (53),DecisionTree,0.0171,0.0307,-0.0136
+Full (53),LogReg,0.0616,0.0566,0.005
+Full (53),RandomForest,0.1454,0.2248,-0.0794
+Full (53),XGBoost,0.1586,0.1581,0.0005

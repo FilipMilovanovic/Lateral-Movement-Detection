@@ -61,7 +61,7 @@ vremenski_prozori = con.execute(f"""
         CAST(time / {WINDOW_SEC} AS BIGINT)              AS window_id,
         COUNT(*)                                         AS n_events,
         SUM(CASE WHEN outcome = 'Success' THEN 1 ELSE 0 END)  AS n_success,
-        SUM(CASE WHEN outcome = 'Failure' THEN 1 ELSE 0 END)  AS n_failure,
+        SUM(CASE WHEN outcome = 'Fail' THEN 1 ELSE 0 END)  AS n_failure,
         COUNT(DISTINCT dst_comp)                         AS n_dst_comp,
         COUNT(DISTINCT src_comp)                         AS n_src_comp,
         SUM(CASE WHEN auth_type = 'NTLM' THEN 1 ELSE 0 END)      AS n_ntlm,
