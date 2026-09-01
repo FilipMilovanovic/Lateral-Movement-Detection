@@ -1,4 +1,10 @@
-Model,AP val,AUC-ROC val
-Transformer,0.077,0.8801
-GRU,0.0635,0.8754
-LSTM,0.0587,0.8692
+Skup,Model,AP val,AUC-ROC val
+Filter (40),GRU,0.1311,0.9004
+Full (53),GRU,0.0987,0.8978
+Full (53),Transformer,0.0784,0.9088
+Filter (40),Transformer,0.0774,0.9028
+Final (11),Transformer,0.077,0.8801
+Filter (40),LSTM,0.0743,0.8373
+Final (11),GRU,0.0635,0.8754
+Full (53),LSTM,0.0596,0.8413
+Final (11),LSTM,0.0587,0.8692

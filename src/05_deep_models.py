@@ -1,7 +1,7 @@
 # %%
 # FAZA 5 — Modelovanje: duboki modeli (LSTM, GRU, Transformer)
 #
-# Koristim isti finalni skup atributa i istu vremensku podelu (train/valid/test)
+# Koristim iste skupove atributa i istu vremensku podelu (train/valid/test)
 # kao u Fazi 4, ali podatke organizujem u sekvence po entitetu, poredjane
 # hronološki po vremenskom prozoru. LSTM, GRU i Transformer ne dobijaju
 # ručno napravljene istorijske atribute jedan po jedan (kao klasični modeli),
@@ -45,32 +45,41 @@ print("Uređaj za treniranje:", DEVICE)
 
 # %%
 # --- 1. Učitavanje podataka iz Faze 3 (isti izvor kao kod klasičnih modela) ---
+
 vremenski_prozori = pd.read_parquet(PROC / "features.parquet")
 
 with open(PROC / "selected_features.json", encoding="utf-8") as f:
     atributi_final = json.load(f)
+with open(PROC / "features_after_filter.json", encoding="utf-8") as f:
+    atributi_filter = json.load(f)
+with open(PROC / "features_full.json", encoding="utf-8") as f:
+    atributi_full = json.load(f)
 with open(PROC / "imputation_values.json", encoding="utf-8") as f:
     imputation_values = json.load(f)
+# has_history je napravljen u Fazi 3 samo na treningu i nije sačuvan u
+# features.parquet, pa se rekreira ovde na isti način kao u Fazi 4.
+vremenski_prozori["has_history"] = (vremenski_prozori["window_seq_num"] >= 1).astype(
+    int
+)
 
 # Imputacija istim vrednostima izračunatim na treningu u Fazi 3.
 for kolona, vrednost in imputation_values.items():
     if kolona in vremenski_prozori.columns:
         vremenski_prozori[kolona] = vremenski_prozori[kolona].fillna(vrednost)
 
+
+SKUPOVI_ATRIBUTA = {
+    "Final (11)": atributi_final,
+    "Filter (40)": atributi_filter,
+    "Full (53)": atributi_full,
+}
+
 print("Ukupno redova:", len(vremenski_prozori))
-print(f"Finalni skup atributa ({len(atributi_final)}):", atributi_final)
+for naziv, kolone in SKUPOVI_ATRIBUTA.items():
+    print(f"{naziv}: {len(kolone)} atributa")
 
 # %%
-# --- 2. Skaliranje atributa ---
-# RobustScaler se uči isključivo na treningu, da ne bi došlo do curenja
-# informacija iz validacije/testa, isto pravilo kao u prethodnim fazama.
-skaler = RobustScaler()
-trening_maska = vremenski_prozori["split"] == "train"
-skaler.fit(vremenski_prozori.loc[trening_maska, atributi_final])
-vremenski_prozori[atributi_final] = skaler.transform(vremenski_prozori[atributi_final])
-
-# %%
-# --- 3. Pravljenje sekvenci po entitetu ---
+# --- 2. Pravljenje sekvenci po entitetu ---
 # LSTM, GRU i Transformer očekuju ulaz oblika (batch, koraci, atributi).
 # Za svaki red (trenutni prozor) pravim sekvencu od SEQ_LEN uzastopnih
 # prozora istog entiteta, računajući unazad i uključujući trenutni prozor.
@@ -97,39 +106,12 @@ def napravi_sekvence(df, kolone, seq_len):
     return df, sekvence
 
 
-vremenski_prozori, X_sve = napravi_sekvence(vremenski_prozori, atributi_final, SEQ_LEN)
-print("Oblik sekvenci za sve redove:", X_sve.shape)
-
-# Oblik (224180, 10, 11) potvrđuje: svaki od 224180 prozora dobija sekvencu
-# od 10 prethodnih koraka × 11 atributa. Entiteti sa manje od 10 prethodnih
-# prozora imaju sekvencu popunjenu nulama sa leve strane (padding). Ovo
-# uključuje i sve entitete na početku njihove istorije (window_seq_num < 10).
-
 # %%
-# --- 4. Podela na train/val/test (ista podela kao u Fazi 4, kolona 'split') ---
-train_maska = (vremenski_prozori["split"] == "train").to_numpy()
-val_maska = (vremenski_prozori["split"] == "valid").to_numpy()
-test_maska = (vremenski_prozori["split"] == "test").to_numpy()
-
-X_train = X_sve[train_maska]
-X_val = X_sve[val_maska]
-X_test = X_sve[test_maska]
-
-y_train = vremenski_prozori.loc[train_maska, "is_attack"].reset_index(drop=True)
-y_val = vremenski_prozori.loc[val_maska, "is_attack"].reset_index(drop=True)
-y_test = vremenski_prozori.loc[test_maska, "is_attack"].reset_index(drop=True)
-
-print(f"train: {X_train.shape}, pozitivnih: {int(y_train.sum())}")
-print(f"val:   {X_val.shape}, pozitivnih: {int(y_val.sum())}")
-print(f"test:  {X_test.shape}, pozitivnih: {int(y_test.sum())}")
-
-# Isti brojevi pozitivnih kao u Fazi 4 (101/115/35).
-# Vremenska podela identična, sekvence samo menjaju oblik ulaza,
-# ne diraju raspodelu redova po skupovima.
-
-
-# %%
-# --- 5. PyTorch Dataset i DataLoader ---
+# --- 3. PyTorch Dataset ---
+# DataLoader-i se sada prave posebno za svaki skup atributa
+# (ćelija 4), jer svaki skup ima svoje podatke i svoj broj kolona.
+#
+# LSTM, GRU i Transformer moraju biti u obliku (batch, koraci, atributi).
 class ProzorDataset(Dataset):
     """Jedan primer = jedna sekvenca prozora (X) i oznaka poslednjeg prozora (y)."""
 
@@ -145,27 +127,55 @@ class ProzorDataset(Dataset):
 
 
 BATCH_SIZE = 256
-
-train_loader = DataLoader(
-    ProzorDataset(X_train, y_train), batch_size=BATCH_SIZE, shuffle=True
-)
-val_loader = DataLoader(
-    ProzorDataset(X_val, y_val), batch_size=BATCH_SIZE, shuffle=False
-)
-test_loader = DataLoader(
-    ProzorDataset(X_test, y_test), batch_size=BATCH_SIZE, shuffle=False
-)
 # shuffle=True na treningu meša redosled sekvenci u svakoj epohi radi bolje
-# generalizacije gradijentnog spusta, dok je na validaciji i testu shuffle=False
+# generalizacije gradijentnog spusta, dok je na validaciji shuffle=False
 # da bi predikcije ostale u strogo fiksiranom redosledu radi tačne evaluacije.
+
+# %%
+# --- 4. Priprema podataka za sva tri skupa ---
+# Objedinjuje skaliranje i pravljenje sekvenci za sva tri skupa atributa.
+# Svaki skup dobija sopstveni RobustScaler, jer ima drugačiji broj i
+# sastav kolona.
+podaci_po_skupu = {}
+
+for naziv_skupa, kolone in SKUPOVI_ATRIBUTA.items():
+    df = vremenski_prozori.copy()
+
+    # RobustScaler se uči isključivo na treningu, da ne bi došlo do curenja
+    # informacija iz validacije/testa, isto pravilo kao u prethodnim fazama.
+    skaler = RobustScaler()
+    trening_maska = df["split"] == "train"
+    skaler.fit(df.loc[trening_maska, kolone])
+    df[kolone] = skaler.transform(df[kolone])
+
+    df, X_sve = napravi_sekvence(df, kolone, SEQ_LEN)
+
+    train_maska = (df["split"] == "train").to_numpy()
+    val_maska = (df["split"] == "valid").to_numpy()
+
+    y_train_s = df.loc[train_maska, "is_attack"].reset_index(drop=True)
+    y_val_s = df.loc[val_maska, "is_attack"].reset_index(drop=True)
+
+    train_loader = DataLoader(
+        ProzorDataset(X_sve[train_maska], y_train_s),
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+    )
+    val_loader = DataLoader(
+        ProzorDataset(X_sve[val_maska], y_val_s), batch_size=BATCH_SIZE, shuffle=False
+    )
+
+    podaci_po_skupu[naziv_skupa] = {
+        "kolone": kolone,
+        "train_loader": train_loader,
+        "val_loader": val_loader,
+        "y_train": y_train_s,
+    }
+    print(f"{naziv_skupa}: pripremljeno, {int(y_train_s.sum())} pozitivnih na treningu")
 
 
 # %%
-# --- 6. Definicija tri modela ---
-# Sva tri modela imaju isti oblik izlaza: jedan logit po sekvenci (verovatnoća
-# da je poslednji prozor u sekvenci napad), zato mogu da dele istu funkciju
-# za treniranje i evaluaciju.
-#
+# --- 5. Definicija tri modela ---
 # "Dublji" model = više slojeva naslaganih jedan na drugi. Kod LSTM-a i GRU-a je to
 # parametar num_layers (ugrađen u PyTorch, ne treba ga ručno praviti u petlji):
 # izlaz prvog sloja postaje ulaz drugom i tako dalje. Kod Transformera je to
@@ -242,7 +252,7 @@ class TransformerKlasifikator(nn.Module):
 
 
 # %%
-# --- 7. Zajednička funkcija za treniranje i evaluaciju (ista za sva tri modela) ---
+# --- 6. Zajednička funkcija za treniranje i evaluaciju (ista za sva tri modela) ---
 def evaluiraj_model(model, loader):
     """Vraća predviđene verovatnoće, Average Precision i AUC-ROC za dati loader."""
     model.eval()
@@ -318,60 +328,89 @@ def treniraj_model(
 # da model ne bi overfit-ovao trening skup u kasnijim epohama.
 
 # %%
-# --- 8. Treniranje sva tri modela pod istim uslovima ---
+# --- 7. Treniranje sva tri modela pod istim uslovima ---
+# Treniranje se ponavlja za sva tri skupa atributa (9 treninga ukupno: 3 modela x 3 skupa),
+# koristeći podatke pripremljene u ćeliji 4.
+
 EPOHE = 30  # gornja granica; rano zaustavljanje obično prekine trening ranije
 BROJ_SLOJEVA = (
     2  # isti broj naslaganih slojeva za sva tri modela, radi poštenog poređenja
 )
 STRPLJENJE = 5  # rano zaustavljanje: broj epoha bez poboljšanja pre prekida
 
-modeli = {
-    "LSTM": LSTMKlasifikator(n_atributa=len(atributi_final), num_layers=BROJ_SLOJEVA),
-    "GRU": GRUKlasifikator(n_atributa=len(atributi_final), num_layers=BROJ_SLOJEVA),
-    "Transformer": TransformerKlasifikator(
-        n_atributa=len(atributi_final), seq_len=SEQ_LEN, n_slojeva=BROJ_SLOJEVA
-    ),
-}
-
-istorije = {}
+istorije = {}  # (skup, model) -> niz AP po epohama
+modeli_trenirani = {}  # (skup, model) -> istrenirani model objekat
 rezultati = []
-for naziv_modela, model in modeli.items():
-    print(f"\n--- Treniranje modela: {naziv_modela} ---")
-    istorije[naziv_modela] = treniraj_model(
-        model, train_loader, val_loader, y_train, epohe=EPOHE, strpljenje=STRPLJENJE
-    )
-    _, ap_val, auc_val = evaluiraj_model(model, val_loader)
-    rezultati.append(
-        {
-            "Model": naziv_modela,
-            "AP val": round(ap_val, 4),
-            "AUC-ROC val": round(auc_val, 4),
-        }
-    )
 
-duboki_rezultati = pd.DataFrame(rezultati).sort_values("AP val", ascending=False)
-print("\nPoređenje dubokih modela na validaciji:")
+for naziv_skupa, kolone in SKUPOVI_ATRIBUTA.items():
+    print(f"\n--- Skup atributa: {naziv_skupa} ---")
+
+    train_loader = podaci_po_skupu[naziv_skupa]["train_loader"]
+    val_loader = podaci_po_skupu[naziv_skupa]["val_loader"]
+    y_train_s = podaci_po_skupu[naziv_skupa]["y_train"]
+
+    modeli = {
+        "LSTM": LSTMKlasifikator(n_atributa=len(kolone), num_layers=BROJ_SLOJEVA),
+        "GRU": GRUKlasifikator(n_atributa=len(kolone), num_layers=BROJ_SLOJEVA),
+        "Transformer": TransformerKlasifikator(
+            n_atributa=len(kolone), seq_len=SEQ_LEN, n_slojeva=BROJ_SLOJEVA
+        ),
+    }
+
+    for naziv_modela, model in modeli.items():
+        print(f"\n--- Treniranje modela: {naziv_skupa} / {naziv_modela} ---")
+        istorije[(naziv_skupa, naziv_modela)] = treniraj_model(
+            model,
+            train_loader,
+            val_loader,
+            y_train_s,
+            epohe=EPOHE,
+            strpljenje=STRPLJENJE,
+        )
+        _, ap_val, auc_val = evaluiraj_model(model, val_loader)
+        modeli_trenirani[(naziv_skupa, naziv_modela)] = model
+        rezultati.append(
+            {
+                "Skup": naziv_skupa,
+                "Model": naziv_modela,
+                "AP val": round(ap_val, 4),
+                "AUC-ROC val": round(auc_val, 4),
+            }
+        )
+
+duboki_rezultati = (
+    pd.DataFrame(rezultati)
+    .sort_values("AP val", ascending=False)
+    .reset_index(drop=True)
+)
+print("\nPoređenje dubokih modela na sva tri skupa atributa:")
 print(duboki_rezultati.to_string(index=False))
 
 duboki_rezultati.to_csv(RESULTS / "faza5_poredjenje_dubokih_modela.csv", index=False)
 print("Sačuvano: results/faza5_poredjenje_dubokih_modela.csv")
 
-# Transformer pobeđuje GRU i LSTM (AP 0.0770 naspram 0.0635/0.0587).
-# Attention mu omogućava da direktno poveže bilo koja dva vremenska koraka u
-# sekvenci, dok LSTM i GRU moraju da prenose informaciju
-# kroz uzastopne korake, gde signal postepeno slabi na dužim sekvencama.
-# Svi duboki modeli su ipak slabiji od Random Forest-a iz Faze 4 (AP=0.2332).
-# Neobrađen ulaz kao sekvenca zahteva da model sam nauči šta klasični ručno
-# napravljeni istorijski atributi (_lag1, _ma24, _z) već direktno kodiraju,
-# a sa svega 101 pozitivnim primerom u treningu, to je mnogo teži zadatak
-# za učenje nego za XGBoost i Random Forest koji dobijaju gotove signale.
+# Najbolji rezultat ukupno postiže GRU na Filter skupu (AP=0,1311). LSTM
+# ostaje najslabiji na sva tri skupa. Efekat skupa atributa nije
+# jedinstven po arhitekturi: GRU najviše profitira od Filter skupa, dok
+# Transformer najbolji rezultat postiže na Full skupu (AP=0,0784), tek
+# neznatno iznad svog rezultata na Filter skupu (0,0774). Svi duboki
+# modeli i dalje zaostaju za Random Forest-om (AP=0,2332) i XGBoost-om na
+# Filter skupu (AP=0,1868).
 
 # %%
-# --- 9. Grafik napredovanja AP na validaciji kroz epohe, za sva tri modela ---
+# --- 8. Grafik napredovanja AP na validaciji kroz epohe, za sva tri modela ---
+# Prikazuju se krive samo za skup atributa koji je dao najbolji rezultat
+# (ne sva tri skupa odjednom, to bi bilo 9 krivih na istom grafiku).
+#
 # Zahvaljujući ranom zaustavljanju modeli mogu da se treniraju različit broj
 # epoha, zato se za svaki model crta njegova sopstvena dužina istorije.
+najbolji_red = duboki_rezultati.iloc[0]
+naziv_pobednickog_skupa = najbolji_red["Skup"]
+naziv_najboljeg = najbolji_red["Model"]
+
 plt.figure(figsize=(8, 5))
-for naziv_modela, ap_niz in istorije.items():
+for naziv_modela in ["LSTM", "GRU", "Transformer"]:
+    ap_niz = istorije[(naziv_pobednickog_skupa, naziv_modela)]
     plt.plot(
         range(1, len(ap_niz) + 1), ap_niz, marker="o", markersize=3, label=naziv_modela
     )
@@ -383,73 +422,83 @@ plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig(RESULTS / "faza5_ap_kroz_epohe.png", dpi=120)
 plt.show()
-print("Grafik sačuvan: results/faza5_ap_kroz_epohe.png")
+print(
+    f"Grafik sačuvan: results/faza5_ap_kroz_epohe.png (skup: {naziv_pobednickog_skupa})"
+)
 
-# Kriva Transformera je znatno nestabilnija kroz epohe od LSTM-a i GRU-a. Ovo ponašanje
-# je tipično za attention-bazirane modele na malim skupovima podataka (101 pozitivnih),
-# gde svaka epoha vidi drugačiji raspored gradijenata. Rano zaustavljanje
-# (strpljenje=5) je ovde posebno bitno da se ne zadrži slučajno loša epoha.
+# Kriva GRU-a na Filter skupu pokazuje rastuću oscilaciju sa vrhuncem na epohi 19 (AP=0,1311)
+# nakon čega kreće da opada. Transformer dostiže vrhunac odmah na
+# epohi 1 (AP≈0,077) zatim opada pa se oporavlja u epohi 4, uz rano zaustavljanje u epohi 5.
+# LSTM raste sporo i nestabilno, sa vrhuncem tek na epohi 14
+# (AP≈0,074), bez jasnog trenda poboljšanja nakon toga.
 
 # %%
-# --- 10. Biranje najboljeg modela i praga odlučivanja (isti postupak kao u Fazi 4) ---
-naziv_najboljeg = duboki_rezultati.iloc[0]["Model"]
-model_najbolji = modeli[naziv_najboljeg]
+# --- 9. Biranje najboljeg modela i praga odlučivanja (isti postupak kao u Fazi 4) ---
+model_najbolji = modeli_trenirani[(naziv_pobednickog_skupa, naziv_najboljeg)]
+val_loader_pobednik = podaci_po_skupu[naziv_pobednickog_skupa]["val_loader"]
+kolone_pobednik = podaci_po_skupu[naziv_pobednickog_skupa]["kolone"]
 
-p_val, ap_val_najboljeg, auc_val_najboljeg = evaluiraj_model(model_najbolji, val_loader)
-
-preciznost, odziv, pragovi = precision_recall_curve(y_val, p_val)
-f1 = 2 * preciznost * odziv / (preciznost + odziv + 1e-12)
-najbolji_idx = int(np.argmax(f1[:-1]))
-prag = float(pragovi[najbolji_idx])
-
-print(f"\nNajbolji duboki model: {naziv_najboljeg}")
-print(f"Izabrani prag: {prag:.6f}")
-print(
-    f"Na validaciji -> preciznost: {preciznost[najbolji_idx]:.4f}, "
-    f"odziv: {odziv[najbolji_idx]:.4f}, F1: {f1[najbolji_idx]:.4f}"
+p_val, ap_val_najboljeg, auc_val_najboljeg = evaluiraj_model(
+    model_najbolji, val_loader_pobednik
 )
+y_val_pobednik = val_loader_pobednik.dataset.y.numpy()
+
+preciznost, odziv, pragovi = precision_recall_curve(y_val_pobednik, p_val)
+f1 = 2 * preciznost * odziv / (preciznost + odziv + 1e-12)
+idx_najbolji = np.argmax(f1[:-1])
+prag = pragovi[idx_najbolji]
 
 plt.figure(figsize=(8, 5))
-plt.plot(odziv, preciznost, color="steelblue")
+plt.plot(odziv, preciznost)
 plt.scatter(
-    odziv[najbolji_idx],
-    preciznost[najbolji_idx],
-    color="crimson",
+    [odziv[idx_najbolji]],
+    [preciznost[idx_najbolji]],
+    color="red",
     zorder=5,
-    label=f"Izabrani prag (F1={f1[najbolji_idx]:.3f})",
+    label=f"Izabrani prag (F1={f1[idx_najbolji]:.3f})",
 )
 plt.axhline(
-    y_val.mean(),
+    y_val_pobednik.mean(),
     color="gray",
     linestyle="--",
     linewidth=1,
-    label=f"Slučajan model (AP={y_val.mean():.4f})",
+    label=f"Slučajan model (AP={y_val_pobednik.mean():.4f})",
 )
 plt.xlabel("Odziv")
 plt.ylabel("Preciznost")
-plt.title(f"PR kriva na validaciji - {naziv_najboljeg}")
+plt.title(f"PR kriva na validaciji - {naziv_najboljeg} ({naziv_pobednickog_skupa})")
 plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig(RESULTS / "faza5_pr_kriva_validacije.png", dpi=120)
 plt.show()
-print("Grafik sačuvan: results/faza5_pr_kriva_validacije.png")
 
-# F1=0.1524 je znatno niži od Random Forest rezultata iz Faze 4 (F1=0.2969),
-# što je dosledno nižem AP-u Transformera. Neobično visok prag (0.9548)
-# sugeriše da Transformer daje ekstremno samouverene verovatnoće (blizu 0 ili 1).
+print(f"Najbolji duboki model: {naziv_najboljeg} ({naziv_pobednickog_skupa})")
+print(f"Izabrani prag: {prag:.4f}")
+print(
+    f"Na validaciji -> preciznost: {preciznost[idx_najbolji]:.4f}, "
+    f"odziv: {odziv[idx_najbolji]:.4f}, F1: {f1[idx_najbolji]:.4f}"
+)
+
+# Na izabranom pragu (0,9943), model postiže preciznost 0,3519 i odziv
+# 0,1652, što odgovara F-meri od 0,2249. Ovo je i dalje niže od slučajne
+# šume (F1=0,2969). PR kriva pokazuje izraženu nestabilnost pri niskom
+# odzivu (do 0,1), tipičnu za mali broj pozitivnih primera na validaciji.
+# Neobično visoka vrednost praga (blizu 1) ukazuje da GRU dodeljuje
+# ekstremne, samouverene verovatnoće predikcijama.
 
 # %%
-# --- 11. Čuvanje najboljeg modela i konfiguracije ---
+# --- 10. Čuvanje najboljeg modela i konfiguracije ---
 # Isti razlog kao i u Fazi 4: model se čuva radi finalne test
 # evaluacije na kraju Faze 6 bez ponovnog treniranja i bez diranja test skupa.
 torch.save(model_najbolji.state_dict(), MODELS / "faza5_najbolji_model.pt")
 
 konfiguracija = {
     "model": naziv_najboljeg,
+    "skup_atributa": naziv_pobednickog_skupa,
     "seq_len": SEQ_LEN,
-    "kolone": atributi_final,
-    "prag": prag,
+    "kolone": kolone_pobednik,
+    "prag": float(prag),
     "ap_validacija": float(ap_val_najboljeg),
     "auc_validacija": float(auc_val_najboljeg),
 }
@@ -458,6 +507,4 @@ with open(MODELS / "faza5_konfiguracija.json", "w", encoding="utf-8") as f:
 
 print("Sačuvano: models/faza5_najbolji_model.pt")
 print("Sačuvano: models/faza5_konfiguracija.json")
-
-
 # %%

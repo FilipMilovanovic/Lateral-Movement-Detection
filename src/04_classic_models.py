@@ -555,5 +555,3 @@ with open(MODELS / "faza4_konfiguracija.json", "w", encoding="utf-8") as f:
 
 print("Sačuvano: models/faza4_najbolji_model.pkl")
 print("Sačuvano: models/faza4_konfiguracija.json")
-
-# %%

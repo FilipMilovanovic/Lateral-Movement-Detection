@@ -6,7 +6,7 @@
 # hiperparametara, praga) su donete isključivo na train/val.
 # Poredim pobedike svake faze:
 # Faza 4: RandomForest (Filter, bez balansiranja)
-# Faza 5: Transformer (Final, sekvenca)
+# Faza 5: GRU (Filter, sekvenca)
 # Faza 6: Isolation Forest (Filter)
 
 from pathlib import Path
@@ -69,8 +69,7 @@ print(
     "Faza 5:",
     konfig_5["model"],
     "-",
-    "seq_len =",
-    konfig_5["seq_len"],
+    konfig_5["skup_atributa"],
     "- prag:",
     konfig_5["prag"],
 )
@@ -136,36 +135,26 @@ print(
 
 
 # %%
-# --- 5. Faza 5: Transformer ---
+# --- 5. Faza 5: GRU ---
 # Klasa mora biti identična onoj iz 05_deep_models.py, inače
 # load_state_dict() ne može ispravno da učita naučene težine. Dimenzije
 # slojeva se moraju tačno poklapati.
-class TransformerKlasifikator(nn.Module):
-    def __init__(
-        self, n_atributa, seq_len, d_model=32, n_head=2, n_slojeva=2, dropout=0.2
-    ):
+class GRUKlasifikator(nn.Module):
+    def __init__(self, n_atributa, hidden_size=32, num_layers=2, dropout=0.2):
         super().__init__()
-        self.projekcija = nn.Linear(n_atributa, d_model)
-        self.pozicije = nn.Embedding(seq_len, d_model)
-        sloj = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=n_head,
-            dim_feedforward=64,
-            dropout=dropout,
+        self.gru = nn.GRU(
+            input_size=n_atributa,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout if num_layers > 1 else 0.0,
             batch_first=True,
         )
-        self.enkoder = nn.TransformerEncoder(sloj, num_layers=n_slojeva)
-        self.izlaz = nn.Linear(d_model, 1)
+        self.izlaz = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
-        batch, koraci, _ = x.shape
-        pozicije_idx = (
-            torch.arange(koraci, device=x.device).unsqueeze(0).expand(batch, -1)
-        )
-        x = self.projekcija(x) + self.pozicije(pozicije_idx)
-        x = self.enkoder(x)
-        poslednji_korak = x[:, -1, :]
-        return self.izlaz(poslednji_korak).squeeze(1)
+        _, h_n = self.gru(x)
+        poslednje_stanje = h_n[-1]
+        return self.izlaz(poslednje_stanje).squeeze(1)
 
 
 # Sekvence se takođe prave na isti način kao u Fazi 5.
@@ -206,9 +195,7 @@ test_maska_5 = (vremenski_prozori_5["split"] == "test").to_numpy()
 X_test_5 = X_sve_5[test_maska_5]
 y_test_5 = vremenski_prozori_5.loc[test_maska_5, "is_attack"].reset_index(drop=True)
 
-model_5 = TransformerKlasifikator(
-    n_atributa=len(kolone_5), seq_len=SEQ_LEN, n_slojeva=BROJ_SLOJEVA
-)
+model_5 = GRUKlasifikator(n_atributa=len(kolone_5), num_layers=BROJ_SLOJEVA)
 model_5.load_state_dict(
     torch.load(MODELS / "faza5_najbolji_model.pt", map_location=DEVICE)
 )
@@ -225,7 +212,7 @@ ci_donja_5, ci_gornja_5, n_validnih_5 = bootstrap_ap_ci(y_test_5, p_test_5)
 nap_5 = normalizovan_ap(ap_5, y_test_5)
 
 print(
-    f"Faza 5 (Transformer): AP = {ap_5:.4f} [{ci_donja_5:.4f}, {ci_gornja_5:.4f}] "
+    f"Faza 5 (GRU): AP = {ap_5:.4f} [{ci_donja_5:.4f}, {ci_gornja_5:.4f}] "
     f"({n_validnih_5}/1000 validnih uzoraka), AUC-ROC = {auc_5:.4f}, AP normalizovan = {nap_5:.2f}"
 )
 
@@ -310,7 +297,7 @@ print(
     f"uhvaćeno {tp_4}/{tp_4 + fn_4}, lažnih uzbuna {fp_4} ({lazne_dnevno_4:.1f}/dan)"
 )
 print(
-    f"Faza 5 (Transformer) na pragu {konfig_5['prag']:.6f}: "
+    f"Faza 5 (GRU) na pragu {konfig_5['prag']:.6f}: "
     f"preciznost={prec_5:.4f}, odziv={odziv_5:.4f}, F1={f1_5:.4f}, "
     f"uhvaćeno {tp_5}/{tp_5 + fn_5}, lažnih uzbuna {fp_5} ({lazne_dnevno_5:.1f}/dan)"
 )
@@ -343,7 +330,7 @@ rezultati_finalni = pd.DataFrame(
         {
             "Faza": "Faza 5",
             "Model": konfig_5["model"],
-            "Skup": "Final (sekvenca)",
+            "Skup": "Filter (sekvenca)",
             "AP test": round(ap_5, 4),
             "AP CI donja": round(ci_donja_5, 4),
             "AP CI gornja": round(ci_gornja_5, 4),
